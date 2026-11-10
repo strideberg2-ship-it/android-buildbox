@@ -288,8 +288,9 @@ delete promptly, and judge the effect next month, not today.
 - `gh codespace machine` **does not exist** in gh 2.45.0. List machine types with
   `gh api /repos/<owner>/<repo>/codespaces/machines`. The only two available were
   `basicLinux32gb` (2 core / 8 GB / 32 GB) and `standardLinux32gb` (4 core / 16 GB / 32 GB).
-- Heredocs (`cmd <<'EOF'`) are unreliable through the Operit terminal wrapper; write files with
-  `python3 -c` / `python3 file.py` instead.
+- The Operit terminal wrapper runs a **60x40** tty, so long output wraps past the ~24 visible
+  rows and *looks* truncated. Fix: `stty cols 200 rows 50 && echo clear` (now in the proot's
+  `~/.bashrc`). Heredocs themselves work fine here - that was an early misdiagnosis.
 
 **Alternative when you just want an APK:** skip Codespaces entirely and use GitHub Actions
 on push. Android SDK + build-tools are preinstalled on the runner, so builds are fast and

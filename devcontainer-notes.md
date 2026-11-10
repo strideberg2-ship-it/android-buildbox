@@ -215,5 +215,6 @@ of effort, and the framework decision may mean most of this box is unnecessary a
 - `git` in the Operit proot has **no identity configured**; a commit fails with
   `unable to auto-detect email address` and the subsequent push silently sends an empty
   branch pointer. Set `user.name`/`user.email` before committing.
-- Heredocs through the Operit terminal wrapper are unreliable; write scripts with
-  `create_file`/`python3` instead.
+- Terminal output through the Operit wrapper can look truncated/mangled. Cause is the
+  wrapper's **60x40** tty, not heredocs (heredocs verified working). Fix: widen with
+  `stty cols 200 rows 50`. Verified in the proot on 2026-11-10.
