@@ -109,11 +109,12 @@ number.
 
 ## Risks
 
-- **Codespaces free tier may simply be too tight** for a persistent Android toolchain.
-  The honest position: 15 GB-month storage vs 10–15 GB of SDK. Delete-between-sessions
-  works but means a 5–10 min cold start every time. If that becomes the dominant friction,
-  GitHub Actions builds (push → artifact) are the better pattern, and a €5–10/mo VPS is
-  the real fix — at which point storage stops mattering at all.
+- **Codespaces free tier: the SDK was never the problem.** Measured 2026-11-10 — the whole
+  SDK is **437 MB**, not the 10–15 GB this note originally claimed. The binding cost is the
+  *container image*: a custom `image:` billed ~16 GB of loop storage, more than the entire
+  15 GB-month quota. See the experiment result at the end of this file. This risk is
+  downgraded from "free tier may be too tight" to "keep the container free and the SDK is
+  irrelevant".
 - **JDK/AGP/Gradle version triangle** is the classic first-build failure. If `assembleDebug`
   fails immediately with a JVM or "unsupported class file version" error, the JDK feature
   version is the culprit before anything else.
@@ -126,3 +127,93 @@ number.
 - **Framework-specific paths in the README** (`app/build/outputs/...`) assume a standard
   Gradle Android project. Flutter and RN differ; the README says so but the muscle memory
   may not.
+
+
+---
+
+# RESULTS 2026-11-10 — first codespace created, everything tested for real
+
+Supersedes the "no codespace was created, no image pulled" caveat at the top of this file.
+
+## Verified on first create (all six former UNVERIFIED items passed)
+
+Created `basicLinux32gb` in WestEurope from the `image:`-based config:
+
+- Base image `mcr.microsoft.com/devcontainers/base:ubuntu-24.04` → `Ubuntu 24.04.3 LTS`.
+- `ghcr.io/devcontainers/features/java:1` with `version: 21`, `jdkDistro: ms`,
+  `installGradle: true`, `gradleVersion: 8.14` → **all four option names correct**;
+  JDK `21.0.13.0.2` (Microsoft), Gradle `8.14.6` at `/usr/local/sdkman/candidates/gradle/current`.
+- `github-cli:1` → `/usr/bin/gh`. `sshd:1` → `/usr/sbin/sshd` + host keys.
+- `postCreateCommand` ran `bootstrap.sh` to completion: cmdline-tools `11076708_latest`
+  unpacked to `cmdline-tools/latest/bin/`, 8 licence files written, `platforms/android-35`,
+  `build-tools/35.0.0`, `.bashrc` marker block added exactly once.
+- **Idempotency proven**: re-ran `bootstrap.sh` in the live box — every step skipped,
+  `EXIT=0`, no duplicate `.bashrc` block, SDK still 437 MB.
+
+## Measured sizes (this retires the "10–15 GB" estimate)
+
+| Path | Size |
+|---|---|
+| `~/android-sdk` | **437 MB** |
+| — cmdline-tools / build-tools / platforms / licences | 148 / 147 / 142 / 0.04 MB |
+| `~/.gradle` (before any build) | 252 KB |
+| `/usr/local/sdkman` | 500 MB |
+| `/usr` | 1.2 GB |
+
+Loop device with the custom image: `/dev/loop4` **16 GB used of 32 GB** while `/workspaces`
+held only 788 KB — the image itself dominates. `df -h /` said 14 GB avail while
+`bootstrap.sh`'s own preflight `df -Pm $HOME` said 28.7 GB; the two disagree and 14 GB is
+the conservative number.
+
+## The default-image experiment — NEGATIVE RESULT, do not repeat blindly
+
+Hypothesis: omitting `image:` entirely makes Codespaces fall back to its default image,
+whose base container storage GitHub documents as free, so ~16 GB of billed storage would
+disappear while the features still supply JDK/Gradle.
+
+**What actually happened** (branch `default-image`, commit `a674286`, one real create):
+
+- `devcontainer-info` reported: `Definition ID: base-alpine`, `Variant: 3.23`,
+  `Image version: 4.0.9`. That is **Alpine**, *not* the documented `universal` image.
+- Inside the box: `sh`/`bash` and `git` present; `curl`, `unzip`, `python3`, `code` present;
+  **`java` MISSING, `gh` MISSING, `node` MISSING**. `/etc/os-release` → Alpine Linux 3.23.8.
+- `$HOME/android-sdk` did **not exist** — `bootstrap.sh` could not have run (no bash at
+  postCreate time, no java/gh for its preflight), so the box was unusable as a build box.
+- Disk did drop dramatically: `/` and `/workspaces` both **811 MB used, 29 GB avail** —
+  versus 16 GB with the custom image. So the storage theory was right; the *content* was wrong.
+
+**Conclusion: the free storage is real, but the `image:` fallback is not `universal`.** Two
+things were conflated and this experiment separates them:
+
+1. *Free container storage* comes from using GitHub's **default image**.
+2. The **documented `universal` image** is only what you get when there is **no
+   `devcontainer.json` at all** — and it is billed like any other custom image if you name it.
+
+So you cannot get "universal image + free storage" from a repo that has a devcontainer config.
+The honest options are:
+
+- **(A) Custom image** (`ubuntu-24.04`): correct toolchain, all features work, but ~16 GB of
+  billed storage — a single codespace exceeds the whole 15 GB-month free quota.
+- **(B) No devcontainer config at all**: get the free `universal` image with Java/Node/gh
+  preinstalled, but you lose `features`, `postCreateCommand`, `containerEnv` and `remoteUser` —
+  the SDK install becomes a manual script run each session.
+- **(C) Deal with B, then move off the free tier.** A small VPS makes storage stop mattering;
+  GitHub Actions on push is the other route that costs no storage at all.
+
+**(C) is the recommendation.** Free-tier custody of a 16 GB toolchain container is a poor use
+of effort, and the framework decision may mean most of this box is unnecessary anyway.
+
+## gh quirks found in practice
+
+- `gh codespace logs` fails with `vscode@localhost: Permission denied (publickey,password)`.
+  Use `gh codespace ssh -c <name> -- <cmd>` probes instead.
+- `gh codespace machine` does **not** exist in gh 2.45.0. Use
+  `gh api /repos/<owner>/<repo>/codespaces/machines`. Only `basicLinux32gb` (2c/8G/32G) and
+  `standardLinux32gb` (4c/16G/32G) are offered.
+- Cold create to `Available` took **under 1 minute** in WestEurope (twice), so the old
+  "~10 min" figure referred to the SDK download, not provisioning.
+- `git` in the Operit proot has **no identity configured**; a commit fails with
+  `unable to auto-detect email address` and the subsequent push silently sends an empty
+  branch pointer. Set `user.name`/`user.email` before committing.
+- Heredocs through the Operit terminal wrapper are unreliable; write scripts with
+  `create_file`/`python3` instead.
