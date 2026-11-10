@@ -54,7 +54,7 @@ trap 'printf "\nFATAL: bootstrap failed at line %s (command: %s)\nRe-run to resu
 # ---------------------------------------------------------------- 0. preflight
 info "Preflight"
 for cmd in curl unzip java; do
-  command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found. JDK/curl/unzip should come from the devcontainer features; check the 'features' block in devcontainer.json."
+  command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found. This repo has no .devcontainer/, so no devcontainer feature installs a JDK - you only get what the codespace default image ships. Install it (e.g. sudo apt-get install -y openjdk-21-jdk-headless) and re-run; finished steps are skipped."
 done
 AVAIL_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')
 echo "free disk in \$HOME: ${AVAIL_MB} MB (a full SDK + Gradle cache needs ~10-15 GB)"

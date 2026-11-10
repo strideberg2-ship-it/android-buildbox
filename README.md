@@ -86,22 +86,25 @@ Branch on that, then run exactly one of the two blocks below.
 
 ### Step B1 — it does not exist: create it from the drafts
 
+**Do not create a `.devcontainer/` directory and do not copy `devcontainer.json` anywhere.**
+That design is retired — see `devcontainer-notes.md` for the cost reasoning.
+
 ```bash
 D=/sdcard/Download/Operit/android-buildbox    # drafts
 T=~/android-buildbox                          # repo
 
-mkdir -p "$T/.devcontainer" "$T/scripts"
-cp "$D/devcontainer.json" "$D/bootstrap.sh"    "$T/.devcontainer/"
-cp "$D/backup.sh"                              "$T/scripts/"
+mkdir -p "$T/scripts"
+cp "$D/bootstrap.sh" "$D/backup.sh"           "$T/scripts/"
 cp "$D/.gitignore" "$D/README.md" "$D/devcontainer-notes.md" "$T/"
-chmod +x "$T/.devcontainer/bootstrap.sh" "$T/scripts/backup.sh"
+chmod +x "$T/scripts/bootstrap.sh" "$T/scripts/backup.sh"
 
 cd "$T"
 git init -b main
 git add -A
-git commit -m "devcontainer: android build box"
+git commit -m "android-buildbox: bootstrap and backup scripts, no devcontainer"
 gh repo create android-buildbox --public --source=. --remote=origin --push
 ```
+
 **Actual state 2026-11-10: the repo is PUBLIC.** The original draft said `--private`, but the
 repo was created public and the user confirmed public is the intended state (recalled reason:
 better terms — that recall is unverified, but the choice was deliberate). Content currently
@@ -118,20 +121,19 @@ T=~/android-buildbox
 gh repo clone "$(gh api user --jq .login)/android-buildbox" "$T"
 
 D=/sdcard/Download/Operit/android-buildbox    # drafts
-mkdir -p "$T/.devcontainer" "$T/scripts"
-cp "$D/devcontainer.json" "$D/bootstrap.sh"    "$T/.devcontainer/"
-cp "$D/backup.sh"                              "$T/scripts/"
+mkdir -p "$T/scripts"
+cp "$D/bootstrap.sh" "$D/backup.sh"           "$T/scripts/"
 cp "$D/.gitignore" "$D/README.md" "$D/devcontainer-notes.md" "$T/"
-chmod +x "$T/.devcontainer/bootstrap.sh" "$T/scripts/backup.sh"
+chmod +x "$T/scripts/bootstrap.sh" "$T/scripts/backup.sh"
 
-cd "$T" && git add -A && git commit -m "devcontainer: android build box"
+cd "$T" && git add -A && git commit -m "android-buildbox: bootstrap and backup scripts, no devcontainer"
 git push
 ```
 
 ### Step C — confirm before you spend a codespace on it
 
 ```bash
-ls -A ~/android-buildbox ~/android-buildbox/.devcontainer ~/android-buildbox/scripts
+ls -A ~/android-buildbox ~/android-buildbox/scripts
 ```
 
 Expect exactly five files and nothing else:
@@ -141,31 +143,39 @@ Expect exactly five files and nothing else:
 scripts/:            backup.sh  bootstrap.sh
 ```
 
-**Note on older instructions in this file:** the step blocks above still show a
-`.devcontainer/` layout with a `devcontainer.json`. That was the original design and it
-works, but it bills ~16 GB of storage per codespace. The current, cheaper layout is the
-one above - `bootstrap.sh` under `scripts/`, no `.devcontainer/` at all. If you copy files
-by hand, follow this layout, not the older `cp` lines.
-```
+If a `.devcontainer/` shows up in that listing, delete it before creating a codespace —
+its presence is what makes the container billable.
 
 **Do not use `cp -r *` for this.** It silently skips `.gitignore`, and the draft folder and the
 repo have the same name, so a loose `cp -r` can copy the folder into itself.
 
-### Step D — things that were UNVERIFIED and are now confirmed
-All of the following were checked on 2026-11-10 by creating a real codespace and probing it:
+### Step D — what is verified, and what Option B changed
+
+Verified on 2026-11-10 by creating a real codespace and probing it, **with the old
+`devcontainer.json` still in place**:
 
 - Base image `ubuntu-24.04` resolves → `Ubuntu 24.04.3 LTS`.
-- `ghcr.io/devcontainers/features/java:1` with `version: 21`, `jdkDistro: ms`,
-  `installGradle: true`, `gradleVersion: 8.14` → **all four option names correct**;
-  JDK 21.0.13 Microsoft build, Gradle 8.14.6 via `/usr/local/sdkman`.
-- `ghcr.io/devcontainers/features/github-cli:1` → `/usr/bin/gh`.
-- `ghcr.io/devcontainers/features/sshd:1` → `/usr/sbin/sshd` + host keys generated.
-  The "base image probably already ships sshd" worry was unnecessary.
-- `bootstrap.sh` runs correctly as `postCreateCommand`: cmdline-tools `11076708_latest`
-  unpacked to `cmdline-tools/latest/bin`, 8 licence files written, `platforms/android-35`
-  and `build-tools/35.0.0` installed, `.bashrc` marker block added exactly once.
+- `ghcr.io/devcontainers/features/java:1` options (`version`, `jdkDistro`, `installGradle`,
+  `gradleVersion`) are all spelled correctly: JDK 21.0.13 Microsoft build, Gradle 8.14.6
+  under `/usr/local/sdkman`.
+- `github-cli:1` → `/usr/bin/gh`; `sshd:1` → `/usr/sbin/sshd` with host keys generated.
+- `bootstrap.sh` as `postCreateCommand`: cmdline-tools `11076708_latest` unpacked to
+  `cmdline-tools/latest/bin`, 8 licence files written, `platforms;android-35` and
+  `build-tools;35.0.0` installed, `~/.bashrc` marker block added exactly once.
 - Idempotency is real, not claimed: re-running `bootstrap.sh` inside the live box skipped
   every step, exited 0, and did not duplicate the `.bashrc` block.
+
+**Every line above was measured with those features present. Option B has none of them**, so
+inside the new box `java`, `gh`, `gradle` and `sshd` are only whatever the default image
+happens to ship. None of it carries over untested.
+
+### Still unproven — the one assumption Option B rests on
+
+- Dropping `.devcontainer/` entirely should make Codespaces build from its **default image**
+  (`universal`), whose base storage is free. Not yet observed on a real box.
+- `bootstrap.sh` exits at preflight when `java` is missing (see the `for cmd in curl unzip
+  java` check). So run `java -version` first in a fresh box — before spending five to ten
+  minutes downloading an SDK that has no JDK to build with.
 
 ---
 
@@ -185,20 +195,22 @@ gh codespace create --machine basicLinux32gb
   list it prints.
 - If the CLI gripes, create it in the browser: repo → Code → Codespaces → New codespace.
 
-First create runs `postCreateCommand` → `bootstrap.sh`, which downloads the Android SDK.
-**Expect 5–10 minutes.** Watch it:
+**Nothing runs automatically.** There is no `postCreateCommand` any more, so the box arrives
+with an empty Android toolchain and you provision it yourself, once per codespace:
 
 ```bash
-gh codespace ssh          # enter the box; if bootstrap is still running you land on a
-                          # normal shell, so check the log:
-tail -f /workspaces/.codespaces/.persistedshare/creation.log   # UNVERIFIED path
+gh codespace ssh -- 'cd /workspaces/android-buildbox && bash scripts/bootstrap.sh'
 ```
+
+**Expect 5–10 minutes.** It prints one line per step and is safe to re-run: finished steps are
+skipped, so an interrupted bootstrap resumes instead of restarting.
 
 Sanity check once inside:
 
 ```bash
+java -version                           # first, and the likeliest thing to be missing
 sdkmanager --list_installed | head      # the SDK is there
-gradle --version                        # or ./gradlew --version
+gradle --version                        # or ./gradlew --version, once a project exists
 ```
 
 ---
@@ -258,25 +270,34 @@ The SDK is **not** the problem. Measured inside a live `basicLinux32gb` codespac
 | `~/.gradle` before any build | 252 KB |
 | `/usr/local/sdkman` (Gradle via feature) | 500 MB |
 
-The earlier "10–15 GB" figure in this README was wrong by an order of magnitude and has been
+Rows measured with the old `devcontainer.json` in place. Under the current layout the SDK is
+the same and the `sdkman` row disappears with the feature that installed it, so the numbers
+above are an upper bound rather than a forecast.
+
+The earlier "10-15 GB" figure in this README was wrong by an order of magnitude and has been
 removed. The real constraint is the **container image**: with
 `"image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04"` the loop image was **~16 GB**,
 which alone exceeds the whole monthly quota.
 
-### Why there is no `image:` key in devcontainer.json
+### Why this repo has no `.devcontainer/` at all
 Per GitHub's billing docs, storage of a base dev container built from the **default image is
 free** and does not count against the quota — *even if you add features on top*. If the config
 specifies a custom `image` (or a Dockerfile), the **entire container** counts, plus all files.
-So dropping `image:` is not a style choice; it is the single change that moves ~16 GB of billed
-storage off the ledger. Do not add an `image:` back without understanding this.
+
+The trap: naming *any* image makes the container billable, including the stock
+`mcr.microsoft.com/devcontainers/universal` the default already uses. So "point at universal
+explicitly and keep features" does not preserve the free tier — it forfeits it. The only
+configuration that keeps base storage free is **no `devcontainer.json` at all**, which is why
+`bootstrap.sh` moved to `scripts/` and is run by hand. Do not add one back without
+understanding this.
 
 Verify which image a codespace actually used:
 ```bash
 devcontainer-info
 ```
 Default image prints `Definition ID: universal` and
-`Source code repository: https://github.com/devcontainers/images`. If instead it names a
-different source, you are paying for the container and should check the config.
+`Source code repository: https://github.com/devcontainers/images`. If it names a different
+source, you are paying for the container.
 
 **Rule: delete the codespace when you finish a work session.**
 
@@ -390,5 +411,6 @@ Core = JDK + Android SDK + Gradle. That covers Kotlin/Compose as-is.
   for the dev loop entirely (`npx expo start --tunnel` + Expo Go on the phone).
 - **React web/PWA**: no Android SDK needed at all; this whole box is oversized for it.
 
-Do not add these to `devcontainer.json` yet — an unused framework layer costs storage you
-do not have.
+Do not add these yet — an unused framework layer costs storage you do not have. Flutter
+and Node would each need a step written into `scripts/bootstrap.sh`, since there is no
+devcontainer feature mechanism left to lean on.
