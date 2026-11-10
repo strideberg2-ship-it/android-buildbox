@@ -19,6 +19,12 @@ So the recipe is always: **clone → bootstrap → build**. Backup adds at most 
 > `postCreateCommand`, and one manual `bash scripts/bootstrap.sh` per fresh codespace
 > (about two minutes, idempotent, safe to re-run). Full reasoning and the failed alternative
 > in `devcontainer-notes.md`.
+>
+> **Option B itself is now proven.** A codespace was created from this repo with no
+> `.devcontainer/` and `devcontainer-info` reported `Definition ID: universal` — the default
+> image, so base storage is free. It also already shipped java, `gh`, node and gradle, so
+> `bootstrap.sh` only had to add the Android SDK (**437 MB**), and a re-run was idempotent.
+> See Step D. One catch found: the default JDK is 25, so switch to 21 before the first build.
 
 ---
 
@@ -149,33 +155,40 @@ its presence is what makes the container billable.
 **Do not use `cp -r *` for this.** It silently skips `.gitignore`, and the draft folder and the
 repo have the same name, so a loose `cp -r` can copy the folder into itself.
 
-### Step D — what is verified, and what Option B changed
+### Step D — what is now verified (Option B, measured 2026-11-10)
 
-Verified on 2026-11-10 by creating a real codespace and probing it, **with the old
-`devcontainer.json` still in place**:
+A real `basicLinux32gb` codespace was created from this branch with **no `.devcontainer/`** and
+probed. The result is better than the estimate:
 
-- Base image `ubuntu-24.04` resolves → `Ubuntu 24.04.3 LTS`.
-- `ghcr.io/devcontainers/features/java:1` options (`version`, `jdkDistro`, `installGradle`,
-  `gradleVersion`) are all spelled correctly: JDK 21.0.13 Microsoft build, Gradle 8.14.6
-  under `/usr/local/sdkman`.
-- `github-cli:1` → `/usr/bin/gh`; `sshd:1` → `/usr/sbin/sshd` with host keys generated.
-- `bootstrap.sh` as `postCreateCommand`: cmdline-tools `11076708_latest` unpacked to
-  `cmdline-tools/latest/bin`, 8 licence files written, `platforms;android-35` and
-  `build-tools;35.0.0` installed, `~/.bashrc` marker block added exactly once.
-- Idempotency is real, not claimed: re-running `bootstrap.sh` inside the live box skipped
-  every step, exited 0, and did not duplicate the `.bashrc` block.
+- `devcontainer-info` → **`Definition ID: universal`**, `Source code repository:
+  https://github.com/devcontainers/images`, image version 6.1.12. That is the default image,
+  i.e. **base container storage is free**. This was the one assumption Option B rested on; it
+  held.
+- OS `Ubuntu 24.04.5 LTS`.
+- The universal image already ships a **full toolchain**: `java` 25.0.5 (Microsoft),
+  `gh` at `/usr/bin/gh`, `node` 24.22.2, and `gradle` 9.8.2 via `/usr/local/sdkman`.
+  No devcontainer feature was needed to get any of it. The old feature-based measurements
+  therefore still apply in substance — the features were belt and braces.
+- `bash scripts/bootstrap.sh` ran to completion in the box: cmdline-tools
+  `11076708_latest`, licences accepted, `platforms;android-35` + `build-tools;35.0.0`
+  installed, `.bashrc` env block added. **SDK total 437 MB.**
+- **Idempotency re-proven under Option B**: a second run skipped every step, exited 0, and did
+  not duplicate the `.bashrc` block (`grep -c android-buildbox:start` = 1).
+- No payment method is billed: storage for a default-image container is free, and the SDK's
+  437 MB is trivial against the 15 GB-month allowance.
 
-**Every line above was measured with those features present. Option B has none of them**, so
-inside the new box `java`, `gh`, `gradle` and `sshd` are only whatever the default image
-happens to ship. None of it carries over untested.
+### The one wrinkle: JDK 25 is the default
 
-### Still unproven — the one assumption Option B rests on
+The image's default JDK is **25**, which is newer than the Android Gradle Plugin supports.
+`sdkman` also carries **21.0.13-ms**, so no download is needed — just select it:
 
-- Dropping `.devcontainer/` entirely should make Codespaces build from its **default image**
-  (`universal`), whose base storage is free. Not yet observed on a real box.
-- `bootstrap.sh` exits at preflight when `java` is missing (see the `for cmd in curl unzip
-  java` check). So run `java -version` first in a fresh box — before spending five to ten
-  minutes downloading an SDK that has no JDK to build with.
+```bash
+sdk default java 21.0.13-ms        # or per shell: sdk use java 21.0.13-ms
+java -version                      # expect 21.x
+```
+
+Do this **after** `bootstrap.sh` if you prefer, but before the first Gradle build. Not yet
+tested against a real project — there is no app in this repo yet.
 
 ---
 
