@@ -216,5 +216,8 @@ of effort, and the framework decision may mean most of this box is unnecessary a
   `unable to auto-detect email address` and the subsequent push silently sends an empty
   branch pointer. Set `user.name`/`user.email` before committing.
 - Terminal output through the Operit wrapper can look truncated/mangled. Cause is the
-  wrapper's **60x40** tty, not heredocs (heredocs verified working). Fix: widen with
-  `stty cols 200 rows 50`. Verified in the proot on 2026-11-10.
+  wrapper's **60x40** tty - specifically ROWS: output taller than the tty scrolls off the
+  bottom and a command's trailing output never reaches the tool result. **Heredocs are
+  fine**; an earlier note blamed them and was wrong (both heredoc and base64 round-trip
+  produced byte-identical 35-byte files). Fix: `stty rows 500 cols 200`, verified with a
+  200-line output plus trailing marker. Now set in the proot's `~/.bashrc`.

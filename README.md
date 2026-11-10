@@ -6,10 +6,19 @@ Two hosts, one file set: GitHub Codespaces now, any Linux VPS later.
 **Design rule:** the repo holds *configuration*. Nothing important lives only on the box.
 So the recipe is always: **clone → bootstrap → build**. Backup adds at most a small tarball.
 
-> Status: drafts. The two shell scripts have been syntax-checked and run against stubs on the
-> phone (see `devcontainer-notes.md` — three real bugs were found and fixed that way).
-> Nothing has touched a codespace, a container image, or Google's download servers, so all
-> versions and all Codespaces behaviour are **unverified**.
+> Status as of 2026-11-10: **verified against a real codespace**, not drafts. A box was
+> created, probed and deleted; the SDK, JDK/Gradle feature options, `gh`, `sshd` and the
+> bootstrap script all worked, and `bootstrap.sh` was proven idempotent. Two figures in the
+> original draft were simply wrong and are corrected in place: the SDK is **437 MB**, not
+> 10-15 GB, and the binding cost is the *container image*, not the SDK.
+>
+> **This repo no longer carries a `.devcontainer/`.** That is deliberate. Codespaces bills
+> storage for any container built from an image you name, even the stock `universal` one;
+> base storage for a container built from its *default* image is free. Removing the config
+> entirely is the only way to get the default image, so the trade is: no more
+> `postCreateCommand`, and one manual `bash scripts/bootstrap.sh` per fresh codespace
+> (about two minutes, idempotent, safe to re-run). Full reasoning and the failed alternative
+> in `devcontainer-notes.md`.
 
 ---
 
@@ -17,11 +26,9 @@ So the recipe is always: **clone → bootstrap → build**. Backup adds at most 
 
 ```
 android-buildbox/
-├── .devcontainer/
-│   ├── devcontainer.json      <- from this folder
-│   └── bootstrap.sh           <- from this folder, chmod +x
 ├── scripts/
-│   └── backup.sh              <- from this folder, chmod +x
+│   ├── bootstrap.sh           <- chmod +x, run manually per codespace
+│   └── backup.sh              <- chmod +x
 ├── .gitignore                 <- from this folder
 ├── README.md                  <- from this folder
 ├── devcontainer-notes.md      <- from this folder
@@ -127,12 +134,18 @@ git push
 ls -A ~/android-buildbox ~/android-buildbox/.devcontainer ~/android-buildbox/scripts
 ```
 
-Expect exactly six files and nothing else:
+Expect exactly five files and nothing else:
 
 ```
 ~/android-buildbox:  .gitignore  README.md  devcontainer-notes.md  (.git)
-.devcontainer/:      devcontainer.json  bootstrap.sh
-scripts/:            backup.sh
+scripts/:            backup.sh  bootstrap.sh
+```
+
+**Note on older instructions in this file:** the step blocks above still show a
+`.devcontainer/` layout with a `devcontainer.json`. That was the original design and it
+works, but it bills ~16 GB of storage per codespace. The current, cheaper layout is the
+one above - `bootstrap.sh` under `scripts/`, no `.devcontainer/` at all. If you copy files
+by hand, follow this layout, not the older `cp` lines.
 ```
 
 **Do not use `cp -r *` for this.** It silently skips `.gitignore`, and the draft folder and the
@@ -288,9 +301,12 @@ delete promptly, and judge the effect next month, not today.
 - `gh codespace machine` **does not exist** in gh 2.45.0. List machine types with
   `gh api /repos/<owner>/<repo>/codespaces/machines`. The only two available were
   `basicLinux32gb` (2 core / 8 GB / 32 GB) and `standardLinux32gb` (4 core / 16 GB / 32 GB).
-- The Operit terminal wrapper runs a **60x40** tty, so long output wraps past the ~24 visible
-  rows and *looks* truncated. Fix: `stty cols 200 rows 50 && echo clear` (now in the proot's
-  `~/.bashrc`). Heredocs themselves work fine here - that was an early misdiagnosis.
+- The Operit terminal wrapper runs a **60x40** tty. **ROWS is what bites:** output taller
+  than the tty scrolls off the bottom, so the tail of a command - its final `echo` markers,
+  the second half of a compound command - never reaches the tool result at all. That reads
+  exactly like a half-executed or mangled command, and it is what made heredocs look broken
+  here. Heredocs are fine; the output was being clipped. Fix: `stty rows 500 cols 200`
+  (now in the proot's `~/.bashrc`). Verified with a 200-line output plus a trailing marker.
 
 **Alternative when you just want an APK:** skip Codespaces entirely and use GitHub Actions
 on push. Android SDK + build-tools are preinstalled on the runner, so builds are fast and

@@ -4,7 +4,7 @@
 # Archives the small amount of NON-Git state that is annoying to recreate, into ONE
 # timestamped tarball. Everything else is either in Git or is a cache.
 #
-# Restore recipe:  git clone <repo> && bash .devcontainer/bootstrap.sh && tar -xzf <file> -C ~
+# Restore recipe:  git clone <repo> && bash scripts/bootstrap.sh && tar -xzf <file> -C ~
 # That is the whole point: backups carry preferences, not toolchains.
 #
 # WHAT IS BACKED UP (whitelist - nothing outside this list is touched)
@@ -12,7 +12,7 @@
 #   ~/.bashrc  (only the marked android-buildbox block)  env vars from bootstrap
 #   ~/.gradle/gradle.properties                          build tuning (NOT ~/.gradle/caches)
 #   <repo>/local.properties                              machine-specific SDK path
-#   <repo>/.vscode/  <repo>/.devcontainer/*.local.json    per-machine workspace config
+#   <repo>/.vscode/                                      per-machine workspace config
 #   <repo>/notes/                                        your own notes, if you keep them there
 #   a generated MANIFEST.txt                             what/when/versions, for forensics
 #
@@ -73,7 +73,8 @@ stage_file "$HOME/.gitconfig"                "home/.gitconfig"
 stage_file "$HOME/.bash_aliases"            "home/.bash_aliases"
 stage_file "$HOME/.gradle/gradle.properties" "home/.gradle/gradle.properties"
 stage_file "$REPO_ROOT/local.properties"    "repo/local.properties"
-stage_file "$REPO_ROOT/.devcontainer/devcontainer.local.json" "repo/.devcontainer/devcontainer.local.json"
+# (no devcontainer.local.json any more: option B runs Codespaces on the stock
+#  universal image with no devcontainer config in the repo.)
 
 if [[ -d "$HOME/.config/git" ]]; then stage_dir "$HOME/.config/git" "home/.config/git"; fi
 if [[ -d "$REPO_ROOT/.vscode" ]]; then stage_dir "$REPO_ROOT/.vscode" "repo/.vscode"; fi
@@ -122,4 +123,4 @@ chmod 600 "$ARCHIVE"
 echo
 echo "Wrote $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
 echo "Move it OFF the box (scp from Termux, or push to a private repo you own)."
-echo "Restore:  git clone <repo> && bash .devcontainer/bootstrap.sh && tar -xzf $(basename "$ARCHIVE") -C ~"
+echo "Restore:  git clone <repo> && bash scripts/bootstrap.sh && tar -xzf $(basename "$ARCHIVE") -C ~"

@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
-# DRAFT - copy to <repo>/.devcontainer/bootstrap.sh  (chmod +x)
+# Lives at <repo>/scripts/bootstrap.sh  (chmod +x)
+#
+# Run MANUALLY, once per fresh codespace:
+#     bash scripts/bootstrap.sh
+#
+# Why manual: this repo deliberately has no .devcontainer/, so Codespaces builds a
+# container from its DEFAULT image, whose base storage GitHub does not bill. A
+# devcontainer.json cannot be used to gain that - naming any image, even the stock
+# universal one, makes the whole container billable. The cost is that there is no
+# postCreateCommand any more, so this script is the one manual step. It is written
+# to be idempotent (verified: re-running skips every step and exits 0), so running
+# it again in the same box is harmless.
 #
 # Idempotent setup for the Android build box. Safe to re-run any number of times.
 # Does: JDK check -> Android cmdline-tools -> SDK platform + build-tools -> licences
