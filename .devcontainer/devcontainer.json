@@ -9,10 +9,21 @@
 {
   "name": "android-buildbox",
 
-  // UNVERIFIED: that ubuntu-24.04 is the newest base tag available. Base image is small
-  // (~1 GB) on purpose - the 15 GB-month Codespaces storage quota is the binding limit,
-  // so we do not want the huge "universal" image with 10 toolchains we never use.
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  // NO "image" ON PURPOSE - do not add one back without reading this.
+  //
+  // GitHub bills Codespaces storage while a codespace EXISTS. Per docs.github.com, storage
+  // of a base dev container built from the DEFAULT image is free and is not counted against
+  // the 15 GB-month personal quota; with a custom "image" the whole container IS counted.
+  // Measured 2026-11-10: with "image": base:ubuntu-24.04 the loop image was ~16 GB, i.e.
+  // more than the entire monthly quota. Omitting "image" (and specifying no Dockerfile)
+  // makes Codespaces use its default image, whose base storage is free - even when
+  // features are added on top.
+  //
+  // The default image already ships JDK, Node, Python, git, gh and openssh. The java:
+  // feature below still pins the exact JDK 21 we verified, so behaviour does not depend
+  // on whatever the default image happens to carry that week.
+  // Verify after any change: run `devcontainer-info` in the box. Free-tier default image
+  // prints "Definition ID: universal" + "Source code repository: https://github.com/devcontainers/images".
 
   "features": {
     // devcontainers/features/java is the boring, maintained way to get a JDK + Gradle.

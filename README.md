@@ -93,12 +93,16 @@ cd "$T"
 git init -b main
 git add -A
 git commit -m "devcontainer: android build box"
-gh repo create android-buildbox --private --source=. --remote=origin --push
+gh repo create android-buildbox --public --source=. --remote=origin --push
 ```
+**Actual state 2026-11-10: the repo is PUBLIC.** The original draft said `--private`, but the
+repo was created public and the user confirmed public is the intended state (recalled reason:
+better terms — that recall is unverified, but the choice was deliberate). Content currently
+carries no credentials. Treat visibility as a real setting, not a comment in a code block;
+check it with `gh repo view --json visibility` before assuming.
 
-`--private` is deliberate — Codespaces works either way, and a private repo keeps the box out
-of public indexes. Public repos get unlimited Actions minutes, private ones 2,000/month; you
-are far from either limit.
+Public repos get unlimited Actions minutes, private ones 2,000/month; you are far from either
+limit. Codespaces works either way.
 
 ### Step B2 — it exists: clone it, then copy the drafts in
 
@@ -133,6 +137,22 @@ scripts/:            backup.sh
 
 **Do not use `cp -r *` for this.** It silently skips `.gitignore`, and the draft folder and the
 repo have the same name, so a loose `cp -r` can copy the folder into itself.
+
+### Step D — things that were UNVERIFIED and are now confirmed
+All of the following were checked on 2026-11-10 by creating a real codespace and probing it:
+
+- Base image `ubuntu-24.04` resolves → `Ubuntu 24.04.3 LTS`.
+- `ghcr.io/devcontainers/features/java:1` with `version: 21`, `jdkDistro: ms`,
+  `installGradle: true`, `gradleVersion: 8.14` → **all four option names correct**;
+  JDK 21.0.13 Microsoft build, Gradle 8.14.6 via `/usr/local/sdkman`.
+- `ghcr.io/devcontainers/features/github-cli:1` → `/usr/bin/gh`.
+- `ghcr.io/devcontainers/features/sshd:1` → `/usr/sbin/sshd` + host keys generated.
+  The "base image probably already ships sshd" worry was unnecessary.
+- `bootstrap.sh` runs correctly as `postCreateCommand`: cmdline-tools `11076708_latest`
+  unpacked to `cmdline-tools/latest/bin`, 8 licence files written, `platforms/android-35`
+  and `build-tools/35.0.0` installed, `.bashrc` marker block added exactly once.
+- Idempotency is real, not claimed: re-running `bootstrap.sh` inside the live box skipped
+  every step, exited 0, and did not duplicate the `.bashrc` block.
 
 ---
 
@@ -208,8 +228,42 @@ No `logcat` in this loop by design — build a debug screen or use an in-app log
 
 ## 3. The storage problem (this is the real constraint)
 
-Codespaces free = **120 core-hours + 15 GB-month storage**. A cold SDK + Gradle cache is
-10–15 GB. Left idle, one codespace eats most of your monthly storage for nothing.
+Codespaces free (GitHub Free personal) = **120 core-hours + 15 GB-month storage**; Pro gives
+180 hrs / 20 GB-month. Prices if you exceed: $0.18/hr for a 2-core box, $0.07 per GB-month.
+With no payment method on file, usage is simply *blocked* at the quota — you cannot lose money
+here, you can only get stuck until the month rolls over.
+
+### What actually eats the quota (measured 2026-11-10, not estimated)
+The SDK is **not** the problem. Measured inside a live `basicLinux32gb` codespace:
+
+| Thing | Size |
+|---|---|
+| `~/android-sdk` total | **437 MB** |
+| — cmdline-tools | 148 MB |
+| — build-tools 35.0.0 | 147 MB |
+| — platforms/android-35 | 142 MB |
+| `~/.gradle` before any build | 252 KB |
+| `/usr/local/sdkman` (Gradle via feature) | 500 MB |
+
+The earlier "10–15 GB" figure in this README was wrong by an order of magnitude and has been
+removed. The real constraint is the **container image**: with
+`"image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04"` the loop image was **~16 GB**,
+which alone exceeds the whole monthly quota.
+
+### Why there is no `image:` key in devcontainer.json
+Per GitHub's billing docs, storage of a base dev container built from the **default image is
+free** and does not count against the quota — *even if you add features on top*. If the config
+specifies a custom `image` (or a Dockerfile), the **entire container** counts, plus all files.
+So dropping `image:` is not a style choice; it is the single change that moves ~16 GB of billed
+storage off the ledger. Do not add an `image:` back without understanding this.
+
+Verify which image a codespace actually used:
+```bash
+devcontainer-info
+```
+Default image prints `Definition ID: universal` and
+`Source code repository: https://github.com/devcontainers/images`. If instead it names a
+different source, you are paying for the container and should check the config.
 
 **Rule: delete the codespace when you finish a work session.**
 
@@ -218,11 +272,24 @@ gh codespace list
 gh codespace delete -c <codespace>      # confirm with -f or the prompt
 ```
 
-Next session: `gh codespace create` again (~10 min cold SDK download, no charge beyond
-compute time). Annoying but correct. **UNVERIFIED:** that a deleted codespace's storage
-stops counting *immediately* rather than at end of month — measure it for one billing
-cycle (`gh api /user/codespaces` has no quota field; check
-github.com/settings/billing).
+Next session: `gh codespace create` again (cold create was measured at **under 1 minute** to
+`Available` in WestEurope, plus a couple of minutes for the SDK download in `postCreateCommand`;
+the old "~10 min" figure was pessimistic).
+
+**RESOLVED 2026-11-10:** storage is a *cumulative* monthly figure, not a live balance. GitHub's
+docs state plainly that deleting a codespace does **not** reduce this month's used-storage
+number — it only reduces the rate at which it accumulates. So there is nothing to "measure for
+a billing cycle"; the earlier UNVERIFIED note was asking the wrong question. Practical rule:
+delete promptly, and judge the effect next month, not today.
+
+**Quirks found in practice:**
+- `gh codespace logs` fails here with `vscode@localhost: Permission denied (publickey,password)`.
+  Use `gh codespace ssh -c <name> -- <command>` probes instead of reading postCreate logs.
+- `gh codespace machine` **does not exist** in gh 2.45.0. List machine types with
+  `gh api /repos/<owner>/<repo>/codespaces/machines`. The only two available were
+  `basicLinux32gb` (2 core / 8 GB / 32 GB) and `standardLinux32gb` (4 core / 16 GB / 32 GB).
+- Heredocs (`cmd <<'EOF'`) are unreliable through the Operit terminal wrapper; write files with
+  `python3 -c` / `python3 file.py` instead.
 
 **Alternative when you just want an APK:** skip Codespaces entirely and use GitHub Actions
 on push. Android SDK + build-tools are preinstalled on the runner, so builds are fast and
