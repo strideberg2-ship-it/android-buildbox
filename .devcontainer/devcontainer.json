@@ -1,0 +1,75 @@
+// DRAFT - copy to <repo>/.devcontainer/devcontainer.json
+//
+// Framework-agnostic Android build box. Core = JDK + Android cmdline-tools + Gradle.
+// Flutter / Node are OPTIONAL and are added later (see devcontainer-notes.md); they are
+// deliberately NOT features here so the core keeps working without them.
+//
+// Everything pinned below is "believed current on 2026-11-10" and NOT personally verified
+// from this device. Anything marked UNVERIFIED should be checked once on first create.
+{
+  "name": "android-buildbox",
+
+  // UNVERIFIED: that ubuntu-24.04 is the newest base tag available. Base image is small
+  // (~1 GB) on purpose - the 15 GB-month Codespaces storage quota is the binding limit,
+  // so we do not want the huge "universal" image with 10 toolchains we never use.
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+
+  "features": {
+    // devcontainers/features/java is the boring, maintained way to get a JDK + Gradle.
+    // UNVERIFIED: accepted values for "version", "jdkDistro", "installGradle", "gradleVersion".
+    // If creation fails, check https://github.com/devcontainers/features/tree/main/src/java
+    // and adjust, or drop installGradle and let bootstrap.sh find the project's gradlew.
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "jdkDistro": "ms",
+      "installGradle": true,
+      "gradleVersion": "8.14"
+    },
+    // Useful inside the box; harmless if you never use it. Drop to save ~50 MB.
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    // Explicit SSH server. See the note at the bottom of this file: it costs almost
+    // nothing and removes the single most likely first-create failure.
+    // UNVERIFIED: exact feature id and whether ":1" is still the current major tag.
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+
+  // Small machines only. 2-core / 8 GB / 32 GB is the free Codespaces shape.
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+
+  // Single entry point. Idempotent: re-running after a rebuild skips finished steps.
+  "postCreateCommand": "bash .devcontainer/bootstrap.sh",
+
+  // ANDROID_HOME lives in the container user's home, NOT /opt, so no sudo is needed and
+  // permissions cannot bite. bootstrap.sh writes the same values into ~/.bashrc as well,
+  // because non-interactive `gh codespace ssh` sessions do not read containerEnv.
+  "containerEnv": {
+    "ANDROID_HOME": "/home/vscode/android-sdk",
+    "ANDROID_SDK_ROOT": "/home/vscode/android-sdk",
+    "GRADLE_USER_HOME": "/home/vscode/.gradle"
+  },
+
+  // Extensions: keep deliberately tiny. We work over SSH/CLI, not a remote desktop.
+  // UNVERIFIED: exact marketplace IDs; these two are stable and long-lived.
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.java",
+        "vscjava.vscode-gradle"
+      ]
+    }
+  },
+
+  // Pinned instead of inferred, so it does not depend on the base image's default user.
+  // Must match the /home/vscode paths in containerEnv above.
+  "remoteUser": "vscode"
+
+  // On sshd: the feature at the top of this file is added deliberately, not by accident.
+  // UNVERIFIED whether mcr.microsoft.com/devcontainers/base already ships an SSH server for
+  // `gh codespace ssh`. If it does, the feature is near-free and redundant. If creation ever
+  // rejects the feature id, delete it and retry - that means the "image already has sshd"
+  // reading was correct for this base image.
+}
