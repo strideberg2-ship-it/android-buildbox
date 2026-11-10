@@ -6,6 +6,9 @@ Two hosts, one file set: GitHub Codespaces now, any Linux VPS later.
 **Design rule:** the repo holds *configuration*. Nothing important lives only on the box.
 So the recipe is always: **clone → bootstrap → build**. Backup adds at most a small tarball.
 
+> **Resuming cold? Read `RESUME.md` first.** It holds the current state, the measured
+> numbers, what is settled, what is still unproven, and the single next decision.
+>
 > Status as of 2026-11-10: **verified against a real codespace**, not drafts. A box was
 > created, probed and deleted; the SDK, JDK/Gradle feature options, `gh`, `sshd` and the
 > bootstrap script all worked, and `bootstrap.sh` was proven idempotent. Two figures in the
@@ -37,6 +40,7 @@ android-buildbox/
 │   └── backup.sh              <- chmod +x
 ├── .gitignore                 <- from this folder
 ├── README.md                  <- from this folder
+├── RESUME.md                  <- project state / where we left off
 ├── devcontainer-notes.md      <- from this folder
 └── ...your app
 ```

@@ -128,7 +128,6 @@ number.
   Gradle Android project. Flutter and RN differ; the README says so but the muscle memory
   may not.
 
-
 ---
 
 # RESULTS 2026-11-10 — first codespace created, everything tested for real
@@ -221,3 +220,63 @@ of effort, and the framework decision may mean most of this box is unnecessary a
   fine**; an earlier note blamed them and was wrong (both heredoc and base64 round-trip
   produced byte-identical 35-byte files). Fix: `stty rows 500 cols 200`, verified with a
   200-line output plus trailing marker. Now set in the proot's `~/.bashrc`.
+
+---
+
+## OUTCOME 2026-11-10 — (B) was chosen and proven; the (C) recommendation above is retired
+
+The recommendation at the end of the previous section is superseded. The user chose **(B)**, it
+was implemented and then measured on a second real codespace, and it worked. Read this section
+as the current truth; keep the sections above as the evidence trail that led here.
+
+**What was done.** `.devcontainer/` was deleted from the repo entirely
+(`devcontainer.json` gone, `bootstrap.sh` moved to `scripts/`). Nothing was pinned, nothing was
+nested, no `image:` key survives anywhere. Because the repo now has *no* devcontainer config,
+Codespaces falls back to its own default.
+
+**What the test box reported.** A codespace created from the branch reported via
+`devcontainer-info`:
+
+- `Definition ID: universal` — **not** `base-alpine`
+- `Source code repository: https://github.com/devcontainers/images`
+- `Image version: 6.1.12`, `Source code release/branch: v0.4.37`
+
+So the free-storage theory and the "you get `universal`" theory are both confirmed, and the
+*reason* the earlier `default-image` experiment failed is now fully explained: that experiment
+kept a `devcontainer.json` (minus the `image:` key), and a repo that still has a config does not
+get the `universal` fallback. The config has to be absent, not merely unpinned. That distinction
+is the single most expensive lesson in this file.
+
+**The image turned out to be richer than the devcontainer it replaced.** Measured inside the box:
+
+| | universal image | the old custom devcontainer |
+|---|---|---|
+| OS | Ubuntu 24.04.5 LTS | Ubuntu 24.04.3 LTS |
+| JDK | openjdk 25.0.5.0.2 (Microsoft) | OpenJDK 21.0.13.0.2 (Microsoft) |
+| `gh` | `/usr/bin/gh` | `/usr/bin/gh` (via feature) |
+| node | v24.22.2 | absent |
+| gradle | 9.8.2 (sdkman) | 8.14.6 (via feature) |
+| base container storage | **free** | ~16 GB billed |
+
+The `java`, `github-cli` and `sshd` features were belt-and-braces all along. Option B cost no
+toolchain capability at all; the only real loss is `postCreateCommand`, i.e. one manual
+`bash scripts/bootstrap.sh` when a box is fresh.
+
+**One new wrinkle: the default JDK is 25, which AGP does not accept.** The fix needs no download
+— both JDKs are already at `/usr/local/sdkman/candidates/java/` (`21.0.13.0+2-ms`,
+`25.0.5.0+2-ms`, plus `current`). Switch with `sdk default java 21.0.13-ms` (or `sdk use`) after
+bootstrap and before the first Gradle build. **This has not been exercised against a real
+project**, because there is still no project.
+
+**Idempotency re-proven under the new layout, not assumed.** `bash scripts/bootstrap.sh` ran on a
+clean box (SDK 437 MB, licences, `platforms;android-35`, `build-tools;35.0.0`, one `.bashrc`
+block). A second run skipped every step, exited `0`, left exactly one `android-buildbox:start`
+block, and changed no sizes. So "run it manually every session" is safe.
+
+**Storage measured before teardown, then the box was deleted.** `df -h /` → `overlay 32G 12G 19G
+39% /`, of which ~11 G is the universal base image itself, `916M` sdkman, `437M` android-sdk,
+`172K` `~/.gradle`. Roughly 1.4 GB is the billable delta. `gh codespace list` was then confirmed
+empty (`count: 0`) — never leave one running.
+
+**Branch outcome.** `option-b` was pushed and fast-forwarded into `main`; both now point at the
+verified commit, and `default-image` is retained only as evidence of the failed middle step.
